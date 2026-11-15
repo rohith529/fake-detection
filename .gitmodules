@@ -1,5 +1,0 @@
-# Auto detect text files and perform LF normalization
-* text=auto
-[submodule "Fake News Detection using NLP and ML"]
-    path = Fake News Detection using NLP and ML
-    url = https://github.com/username/some-repo.git
