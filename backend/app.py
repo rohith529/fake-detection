@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 import threading
 
-import retriever
+
 import similarity
 from explain import explain_words, linguistic_markers
 from preprocess import clean
