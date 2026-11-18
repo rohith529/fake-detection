@@ -9,8 +9,7 @@ Changes from original
    memorise.  Removing them forces it to learn language, not topic.
 
 2. TfidfVectorizer: max_features 30 k → 50 k, min_df kept at 2.
-   50 k gives the new __QLEAD__ / __DLEAD__ tokens and rarer debunking phrases
-   room without overfitting.
+   50 k gives richer vocabulary and rarer n-grams room without overfitting.
 
 3. Added SGD (Hinge) as a fourth candidate — fast linear SVM variant that
    scales well and often wins on text with strong minority-class imbalance.
@@ -36,8 +35,8 @@ from seed_data import SEED
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA, OUT = ROOT / "data", ROOT / "models"
-MAX_ROWS   = 40000
-LIVE_WEIGHT = {"feedback": 3.0, "rss": 1.0}
+MAX_ROWS   = None
+LIVE_WEIGHT = {"feedback": 1.0, "rss": 1.0}
 
 # Categories that create a shortcut (topic ≡ label) rather than testing language
 _SKIP_CATEGORIES = {"TERROR", "MISLEADIND"}
@@ -86,12 +85,22 @@ def load_static():
 
 
 def load_live():
-    p = DATA / "live.csv"
-    if not p.exists():
+    """Load verified live learning rows directly from data/history.db (live_data table)."""
+    db_path = DATA / "history.db"
+    if not db_path.exists():
         return pd.DataFrame(columns=["text", "label", "origin"])
-    d = pd.read_csv(p).dropna(subset=["text", "label"])
-    d["text"] = d["text"].astype(str).map(strip_leakage)
-    return d.drop_duplicates(subset="text")
+    try:
+        import sqlite3
+        con = sqlite3.connect(db_path)
+        d = pd.read_sql_query("SELECT text, label, origin FROM live_data", con)
+        con.close()
+        if d.empty:
+            return pd.DataFrame(columns=["text", "label", "origin"])
+        d = d.dropna(subset=["text", "label"])
+        d["text"] = d["text"].astype(str).map(strip_leakage)
+        return d.drop_duplicates(subset="text")
+    except Exception:
+        return pd.DataFrame(columns=["text", "label", "origin"])
 
 
 def _models():
@@ -152,8 +161,7 @@ def main(verbose=True):
             [train, lv[["clean", "label", "weight"]]], ignore_index=True)
 
     # ── Vectorizer ──────────────────────────────────────────────────────────
-    # max_features 30 k → 50 k: gives the injected feature tokens (__QLEAD__,
-    # __DLEAD__) and rarer debunking n-grams room in the vocabulary.
+    # max_features 30 k → 50 k: gives rarer n-grams and vocabulary room.
     vec = TfidfVectorizer(
         ngram_range=(1, 2),
         max_features=50000,
@@ -187,7 +195,7 @@ def main(verbose=True):
     OUT.mkdir(exist_ok=True)
     joblib.dump(
         dict(vectorizer=vec, model=fitted[best], best=best,
-             explainer=fitted["Logistic Regression"]),
+             explainer=fitted[best]),
         OUT / "model.joblib")
 
     (OUT / "metrics.json").write_text(json.dumps(dict(

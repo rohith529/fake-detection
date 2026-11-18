@@ -1,58 +1,58 @@
 {
   "dataset": "ifnd",
   "rows": 55758,
-  "sample": 50,
-  "fallback_count": 22,
-  "evaluated_at": "2026-11-14 19:10",
+  "sample": 20,
+  "fallback_count": 20,
+  "evaluated_at": "2026-11-17 18:30",
   "results": [
     {
       "config": "ml_only",
-      "accuracy": 0.98,
+      "accuracy": 1.0,
       "precision": 1.0,
-      "recall": 0.9706,
-      "f1": 0.9851,
+      "recall": 1.0,
+      "f1": 1.0,
       "confusion": [
         [
-          16,
+          6,
           0
         ],
         [
-          1,
-          33
+          0,
+          14
         ]
       ]
     },
     {
       "config": "source_only",
-      "accuracy": 0.46,
-      "precision": 0.6296,
-      "recall": 0.5,
-      "f1": 0.5574,
+      "accuracy": 0.7,
+      "precision": 0.7,
+      "recall": 1.0,
+      "f1": 0.8235,
       "confusion": [
         [
-          6,
-          10
+          0,
+          6
         ],
         [
-          17,
-          17
+          0,
+          14
         ]
       ]
     },
     {
-      "config": "fused",
-      "accuracy": 0.92,
+      "config": "bayesian_fused",
+      "accuracy": 1.0,
       "precision": 1.0,
-      "recall": 0.8824,
-      "f1": 0.9375,
+      "recall": 1.0,
+      "f1": 1.0,
       "confusion": [
         [
-          16,
+          6,
           0
         ],
         [
-          4,
-          30
+          0,
+          14
         ]
       ]
     }

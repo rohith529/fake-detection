@@ -1,62 +1,65 @@
-﻿"""Offline evaluation: compare ML-only vs Source-only vs Fused credibility scoring.
+"""Offline evaluation: compare ML-only vs Source-only vs Fused credibility scoring.
+
+Remediated architecture:
+- Employs Bayesian log-odds evidence fusion instead of arbitrary hardcoded linear weights.
+- Uses Natural Language Inference (NLI) stance detection (Corroboration vs. Refutation).
+- Tracks fallbacks, coverage rates, and confusion matrices across ML-only, Source-only, and Fused systems.
 
 Usage:
-    python backend/evaluate_grounded.py data/ifnd.csv
     python backend/evaluate_grounded.py data/ifnd.csv --sample 500
 """
-import argparse, json, random, sys, time
+import argparse
+import json
+import random
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).parent))
 
-import joblib, pandas as pd
+import joblib
+import pandas as pd
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
 
-import retriever, similarity
+import retriever
+import similarity
+from app import bayesian_fusion
 from preprocess import clean
-from explain import linguistic_markers
 
 BUNDLE = joblib.load(ROOT / "models" / "model.joblib")
-vec    = BUNDLE["vectorizer"]
-model  = BUNDLE["model"]
+vec = BUNDLE["vectorizer"]
+model = BUNDLE["model"]
 
 
 def _ml_signal(text: str) -> float:
     return float(model.predict_proba(vec.transform([clean(text)]))[0][1])
 
 
-def _fused_cred(p_real: float, source_signal: float,
-                ling_score: float, confidence_flag: bool) -> float:
-    ling_weight = min(0.60, ling_score * 0.8)
-    ml_weight   = 1.0 - ling_weight
-    ling_real   = 1.0 - ling_score
-    p_real_adj  = ml_weight * p_real + ling_weight * ling_real
-    if confidence_flag and ling_score <= 0.70:
-        cred = 0.55 * p_real_adj + 0.45 * source_signal
-    else:
-        cred = p_real_adj
-    return max(0.0, min(1.0, cred))
-
-
-def _verdict(cred_0_1: float) -> int:
-    score = int(round(cred_0_1 * 100))
-    if score >= 60:  return 1
-    if score < 40:   return 0
+def _verdict(prob: float) -> int:
+    score = int(round(prob * 100))
+    if score >= 60:
+        return 1
+    if score < 40:
+        return 0
     return 0  # Unverified -> conservative: treat as fake
 
 
 def _metrics(labels, preds, name: str) -> dict:
     p, r, f1, _ = precision_recall_fscore_support(
-        labels, preds, average="binary", pos_label=1, zero_division=0)
+        labels, preds, average="binary", pos_label=1, zero_division=0
+    )
     return dict(
         config=name,
         accuracy=round(accuracy_score(labels, preds), 4),
-        precision=round(p, 4), recall=round(r, 4), f1=round(f1, 4),
-        confusion=confusion_matrix(labels, preds, labels=[0, 1]).tolist())
+        precision=round(p, 4),
+        recall=round(r, 4),
+        f1=round(f1, 4),
+        confusion=confusion_matrix(labels, preds, labels=[0, 1]).tolist()
+    )
 
 
-def evaluate(csv_path: Path, sample) -> None:
+def evaluate(csv_path: Path, sample: int = None) -> None:
     df = pd.read_csv(csv_path).dropna(subset=["text", "label"])
     df["label"] = df["label"].astype(int)
     rows = df.to_dict("records")
@@ -71,64 +74,75 @@ def evaluate(csv_path: Path, sample) -> None:
     fallback_count = 0
 
     for i, row in enumerate(rows, 1):
-        text  = str(row["text"])
+        text = str(row["text"])
         label = int(row["label"])
         true_labels.append(label)
 
-        p_real     = _ml_signal(text)
-        ling_score = linguistic_markers(text)["score"]
+        p_real = _ml_signal(text)
 
         try:
-            arts   = retriever.fetch(text)
-            scores = similarity.compute_scores(text, arts)
-            src_sig, conf_flag = similarity.compute_source_signal(arts, scores)
+            arts = retriever.fetch(text)
+            stance_scores = similarity.compute_scores(text, arts)
+            src_sig, conf_flag = similarity.compute_source_signal(arts, stance_scores)
+            
+            evidence_payload = [
+                {
+                    "stance": s["stance"],
+                    "reliability": a.get("reliability", 0.85),
+                    "confidence": s["confidence"]
+                }
+                for a, s in zip(arts, stance_scores)
+            ]
             if not arts:
-                raise ValueError("empty corpus")
+                raise ValueError("No coverage found")
         except Exception:
             fallback_count += 1
             src_sig, conf_flag = 0.5, False
+            evidence_payload = []
 
-        ml_preds.append(_verdict(_fused_cred(p_real, 0.5, ling_score, False)))
+        # ML-only verdict (unfused)
+        ml_preds.append(_verdict(p_real))
+
+        # Source-only verdict (threshold at 0.50)
         src_preds.append(1 if src_sig >= 0.5 else 0)
-        fused_preds.append(_verdict(_fused_cred(p_real, src_sig, ling_score, conf_flag)))
 
-        if i % 50 == 0:
+        # Principled Bayesian Fused verdict
+        fused_prob = bayesian_fusion(p_real, evidence_payload, url_reliability=None)
+        fused_preds.append(_verdict(fused_prob))
+
+        if i % 25 == 0 or i == len(rows):
             elapsed = time.time() - t_start
-            print(f"  {i}/{len(rows)} rows -- {elapsed:.1f}s elapsed -- fallbacks: {fallback_count}")
+            print(f"  {i}/{len(rows)} rows | {elapsed:.1f}s elapsed | Fallback count: {fallback_count}")
 
     results = [
-        _metrics(true_labels, ml_preds,    "ml_only"),
-        _metrics(true_labels, src_preds,   "source_only"),
-        _metrics(true_labels, fused_preds, "fused"),
+        _metrics(true_labels, ml_preds, "ml_only"),
+        _metrics(true_labels, src_preds, "source_only"),
+        _metrics(true_labels, fused_preds, "bayesian_fused"),
     ]
 
     out = dict(
-        dataset=csv_path.stem, rows=len(df),
+        dataset=csv_path.stem,
+        rows=len(df),
         sample=sample if sample else len(df),
         fallback_count=fallback_count,
         evaluated_at=time.strftime("%Y-%m-%d %H:%M"),
-        results=results)
+        results=results
+    )
 
     out_path = ROOT / "models" / "grounded_metrics.json"
     out_path.write_text(json.dumps(out, indent=2))
 
     print()
-    print(f"{'Config':<14}  {'Accuracy':>9}  {'Precision':>10}  {'Recall':>7}  {'F1':>7}")
-    print("-" * 56)
+    print(f"{'Config':<18}  {'Accuracy':>9}  {'Precision':>10}  {'Recall':>7}  {'F1':>7}")
+    print("-" * 60)
     for r in results:
-        print(f"{r['config']:<14}  {r['accuracy']:>9.4f}  {r['precision']:>10.4f}  "
+        print(f"{r['config']:<18}  {r['accuracy']:>9.4f}  {r['precision']:>10.4f}  "
               f"{r['recall']:>7.4f}  {r['f1']:>7.4f}")
-    print()
-    print(f"Fallback rows (live retrieval failed): {fallback_count} / {len(rows)}")
-    print(f"Output written: {out_path}")
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(
-        description="Offline evaluation for source-grounded verification.")
-    ap.add_argument("csv_path", type=Path,
-                    help="CSV file with columns: text, label (0=fake, 1=real)")
-    ap.add_argument("--sample", type=int, default=None,
-                    help="Randomly sample N rows with seed=42 (default: all rows)")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("csv_path", type=Path, help="Path to evaluation dataset CSV")
+    parser.add_argument("--sample", type=int, default=None, help="Sample size to evaluate")
+    args = parser.parse_args()
     evaluate(args.csv_path, args.sample)
