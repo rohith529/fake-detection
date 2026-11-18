@@ -1,18 +1,18 @@
 {
   "dataset": "ifnd",
   "rows": 51343,
-  "live_rows": 175,
+  "live_rows": 243,
   "test_rows": 10269,
   "best": "Linear SVM",
   "sklearn": "1.9.1",
-  "trained_at": "2026-11-18 18:58",
+  "trained_at": "2026-11-18 19:48",
   "demo_only": false,
   "results": [
     {
       "model": "Logistic Regression",
-      "accuracy": 0.9569,
+      "accuracy": 0.9568,
       "precision": 0.9534,
-      "recall": 0.9809,
+      "recall": 0.9808,
       "f1": 0.9669,
       "confusion": [
         [
@@ -20,69 +20,69 @@
           317
         ],
         [
-          126,
-          6480
+          127,
+          6479
         ]
       ],
-      "val_f1": 0.9665,
-      "train_seconds": 0.8
+      "val_f1": 0.9663,
+      "train_seconds": 0.3
     },
     {
       "model": "Linear SVM",
-      "accuracy": 0.9631,
+      "accuracy": 0.963,
       "precision": 0.9616,
-      "recall": 0.9818,
-      "f1": 0.9716,
+      "recall": 0.9817,
+      "f1": 0.9715,
       "confusion": [
         [
           3404,
           259
         ],
         [
-          120,
-          6486
+          121,
+          6485
         ]
       ],
       "val_f1": 0.9712,
-      "train_seconds": 0.77
+      "train_seconds": 0.41
     },
     {
       "model": "SGD (Hinge)",
       "accuracy": 0.9594,
-      "precision": 0.9558,
-      "recall": 0.9823,
+      "precision": 0.9561,
+      "recall": 0.982,
       "f1": 0.9689,
       "confusion": [
         [
-          3363,
-          300
+          3365,
+          298
         ],
         [
-          117,
-          6489
+          119,
+          6487
         ]
       ],
       "val_f1": 0.9692,
-      "train_seconds": 0.48
+      "train_seconds": 0.23
     },
     {
       "model": "Random Forest",
-      "accuracy": 0.9573,
-      "precision": 0.9588,
-      "recall": 0.9756,
-      "f1": 0.9671,
+      "accuracy": 0.9577,
+      "precision": 0.9595,
+      "recall": 0.9755,
+      "f1": 0.9674,
       "confusion": [
         [
-          3386,
-          277
+          3391,
+          272
         ],
         [
-          161,
-          6445
+          162,
+          6444
         ]
       ],
-      "val_f1": 0.9663,
-      "train_seconds": 54.85
+      "val_f1": 0.9677,
+      "train_seconds": 20.3
     }
   ]
 }

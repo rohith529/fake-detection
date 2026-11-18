@@ -193,13 +193,17 @@ def analyze():
 
     cred_prob = bayesian_fusion(p_real, source_evidence, src_rel)
 
-    # Epistemic Corroboration Principle:
-    # A static bag-of-words/n-gram classifier evaluating an extraordinary breaking claim
-    # (e.g. death rumors, unverified records) cannot declare it "Likely real" if zero
-    # trusted news sources corroborate it and no trusted publisher link was supplied.
+    # High-impact uncorroborated rumor protection:
+    # A static classifier evaluating sensitive breaking rumors (such as death/fatality hoaxes)
+    # cannot declare them "Likely real" if zero trusted news sources corroborate them and no
+    # trusted publisher link was supplied. General news is evaluated on linguistic ML features.
+    death_rumor_markers = ("passed away", "is dead", "has died", "succumbed to death", "died today", "died yesterday")
+    text_lower = text.lower()
+    is_sensitive_rumor = any(m in text_lower for m in death_rumor_markers)
+
     uncorroborated_flag = False
-    if cred_prob >= 0.60 and support_count == 0 and (src_rel is None or src_rel < 0.80):
-        cred_prob = 0.50
+    if is_sensitive_rumor and support_count == 0 and (src_rel is None or src_rel < 0.80):
+        cred_prob = min(0.50, cred_prob)
         uncorroborated_flag = True
 
     credibility_pct = int(round(cred_prob * 100))
