@@ -45,3 +45,8 @@ data/*.bak
 Thumbs.db
 .vscode/
 .idea/
+
+# Environment variables
+.env
+*.env
+

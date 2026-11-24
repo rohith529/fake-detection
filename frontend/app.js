@@ -12,9 +12,16 @@ $("#ex1").onclick = () => {
   $("#url").value = "";
 };
 $("#ex2").onclick = () => {
-  $("#text").value = "Central bank keeps interest rates unchanged, citing stable inflation and steady economic growth";
-  $("#url").value = "https://www.thehindu.com/business/";
+  $("#text").value = "Supreme Court stays Allahabad HC order on survey of Shahi Idgah complex";
+  $("#url").value = "https://indianexpress.com/article/india/supreme-court-stays-allahabad-hc-order-survey-shahi-idgah/";
 };
+const ex3Btn = $("#ex3");
+if (ex3Btn) {
+  ex3Btn.onclick = () => {
+    $("#text").value = "Will it rain today in Hyderabad?";
+    $("#url").value = "";
+  };
+}
 
 // Analysis Form Submission
 $("#form").addEventListener("submit", async e => {
@@ -57,22 +64,31 @@ function renderEvidencePanel(d) {
     d.source_evidence.forEach(a => {
       const li = el("li");
       
-      // Accessible badge with shape and color
-      const isSupport = a.stance === "SUPPORTS";
-      const isRefute = a.stance === "REFUTES";
+      const st = String(a.stance || "NEUTRAL").toUpperCase();
+      const isSupport = st === "SUPPORTS" || st === "SUPPORTED";
+      const isRefute = st === "REFUTES" || st === "REFUTED";
       const badgeCls = isSupport ? "chip chip-real" : (isRefute ? "chip chip-fake" : "chip");
       const badgeText = isSupport ? "✔ Corroborates" : (isRefute ? "✖ Debunks / Refutes" : "— Related");
       const badge = el("span", badgeCls, badgeText);
 
-      const link = el("a", null, ` ${a.title}`);
+      const link = el("a", null, ` ${a.title || a.link}`);
       link.href = a.link;
       link.target = "_blank";
-      link.rel = "noopener";
+      link.rel = "noopener noreferrer";
 
+      const relPct = Math.round((a.reliability || 0.8) * 100);
+      const confPct = Math.round((a.confidence || 0.8) * 100);
+      const dateStr = a.published_date && a.published_date !== "unknown" ? ` | Published: ${a.published_date}` : "";
       const meta = el("span", "muted",
-        ` [${a.source_domain} | Reliability: ${Math.round((a.reliability || 0) * 100)}% | Confidence: ${Math.round((a.confidence || 0) * 100)}%]`
+        ` [${a.source_domain || "Source"} | Reliability: ${relPct}% | Confidence: ${confPct}%${dateStr}]`
       );
       li.append(badge, link, meta);
+
+      if (a.key_sentence && a.key_sentence !== a.title) {
+        const quote = el("blockquote", "key-sentence", `“${a.key_sentence}”`);
+        li.append(quote);
+      }
+
       ul.append(li);
     });
     panel.append(ul);
@@ -87,18 +103,35 @@ function render(d) {
   box.hidden = false;
   box.replaceChildren();
 
-  // 1. Verdict & Accessible Meter
+  // 1. Verdict & Accessible Meter Header
   const v = el("div", "verdict");
-  const verdictClass = d.verdict.replace(/ /g, "-");
+  const verdictClass = String(d.verdict_display || d.verdict).replace(/ /g, "-");
   
-  // Accessible icon indicator
-  const icon = d.verdict === "Likely real" ? "✔ " : (d.verdict === "Likely fake" ? "✖ " : "? ");
-  const strong = el("strong", verdictClass, `${icon}${d.verdict}`);
+  const isReal = d.verdict === "Likely real" || d.verdict === "SUPPORTED";
+  const isFake = d.verdict === "Likely fake" || d.verdict === "REFUTED";
+  const icon = isReal ? "✔ " : (isFake ? "✖ " : (d.verdict === "NOT_A_CLAIM" ? "ℹ " : "? "));
+  
+  const label = d.verdict_display ? `${d.verdict_display} (${d.verdict.replace(/_/g, " ")})` : d.verdict.replace(/_/g, " ");
+  const strong = el("strong", verdictClass, `${icon}${label}`);
   const scoreBadge = el("span", "score-badge", `Credibility: ${d.credibility}/100`);
+  
   const mlDetail = el("span", "score-meta", `(ML Prior: ${Math.round(d.p_real * 100)}% | Fused: ${d.credibility}%)`);
   v.append(strong, scoreBadge, mlDetail);
 
-  // Semantic HTML5 <meter> for screen readers & a11y compliance
+  if (d.verdict_badge && d.verdict_badge !== d.verdict) {
+    const badgeChip = el("span", "chip", `Grounding: ${d.verdict_badge}`);
+    v.append(badgeChip);
+  }
+  if (d.category && d.category.label) {
+    const catChip = el("span", "chip chip-category", `${d.category.icon || "📌"} ${d.category.label}`);
+    v.append(catChip);
+  }
+  if (d.confidence) {
+    const confPill = el("span", `confidence-badge conf-${d.confidence.toLowerCase()}`, `${d.confidence.toUpperCase()} CONFIDENCE`);
+    v.append(confPill);
+  }
+
+  // Semantic HTML5 <meter> for screen readers & a11y
   const meter = document.createElement("meter");
   meter.min = 0; meter.max = 100; meter.low = 40; meter.high = 60; meter.optimum = 80;
   meter.value = d.credibility;
@@ -113,24 +146,23 @@ function render(d) {
   // Visual Gauge Bar with explicit boundary lines and prominent needle
   const rule = el("div", "rule");
   
-  // Tier threshold boundary divider lines at 40% and 60%
   const div40 = el("div", "rule-divider");
   div40.style.left = "40%";
   const div60 = el("div", "rule-divider");
   div60.style.left = "60%";
   
-  // Visible needle indicator line
   const needle = el("div", "needle");
   needle.setAttribute("title", `Credibility: ${d.credibility}%`);
   needle.style.left = "0%";
   rule.append(div40, div60, needle);
+  
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       needle.style.left = `${Math.min(99.5, Math.max(0.5, d.credibility))}%`;
     });
   });
 
-  // Ticks and scale markers with dedicated height
+  // Ticks and scale markers
   const ticks = el("div", "ticks");
   const tickDefs = [
     { label: "Likely Fake (< 40%)", pos: "0%", align: "left" },
@@ -155,35 +187,52 @@ function render(d) {
     ticks.append(s);
   });
 
-  // Clean separating divider line under the credibility result section
   const sectionDivider = el("hr", "result-divider");
   box.append(v, rule, ticks, sectionDivider);
+
+  // Non-claim Guidance Alert
+  if (d.input_type && d.input_type !== "claim") {
+    const ncBox = el("div", "alert-uncorroborated");
+    let tip = "State a factual assertion that can be corroborated with news evidence.";
+    if (d.input_type === "question") {
+      tip = "Tip: Rephrase questions as declarative statements of fact (e.g., 'It rained in Hyderabad today' instead of 'Will it rain today?').";
+    } else if (d.input_type === "prediction") {
+      tip = "Tip: Future forecasts cannot be verified as existing facts. Test retrospective statements or past events.";
+    } else if (d.input_type === "opinion") {
+      tip = "Tip: Personal opinions and editorials cannot be fact-checked. State objective factual assertions.";
+    }
+    ncBox.innerHTML = `<strong>Input Gate Notice:</strong> This input was classified as a <strong>${d.input_type.toUpperCase()}</strong>. ${d.reasoning || ""}<br><span class="muted">${tip}</span>`;
+    box.append(ncBox);
+  }
 
   // If uncorroborated ceiling applied, display explanation alert
   if (d.uncorroborated_flag) {
     const alert = el("div", "alert-uncorroborated");
-    alert.innerHTML = "<strong>Notice:</strong> Zero corroborating news reports were found from trusted media outlets. Despite formal journalistic vocabulary, this unverified claim cannot be classified as real and is capped at <strong>Unverified (50%)</strong>.";
+    const catLabel = d.category && d.category.label ? d.category.label : "Daily Activity";
+    alert.innerHTML = `<strong>⚠️ Uncorroborated ${catLabel} Notice:</strong> Zero corroborating news reports were found from trusted media outlets for this claim. Despite formal grammatical style, this uncorroborated claim cannot be classified as real and is capped at <strong>Unverified (50%)</strong> to prevent false reporting.`;
     box.append(alert);
   }
 
   // 2. Token Attribution (Explainability)
-  box.append(el("h3", null, "Evidence Attribution: Words pushing the prediction"));
-  const art = el("p", "article");
-  d.explanation.tokens.forEach(tk => {
-    const s = el("span", null, tk.t);
-    const abs = Math.abs(tk.s);
-    if (abs > 0.12) {
-      if (tk.s > 0) {
-        s.className = "token-real";
-        s.style.background = `color-mix(in srgb, var(--real) ${Math.round(abs * 45)}%, transparent)`;
-      } else {
-        s.className = "token-fake";
-        s.style.background = `color-mix(in srgb, var(--fake) ${Math.round(abs * 45)}%, transparent)`;
+  if (d.explanation && d.explanation.tokens) {
+    box.append(el("h3", null, "Evidence Attribution: Words pushing the prediction"));
+    const art = el("p", "article");
+    d.explanation.tokens.forEach(tk => {
+      const s = el("span", null, tk.t);
+      const abs = Math.abs(tk.s);
+      if (abs > 0.12) {
+        if (tk.s > 0) {
+          s.className = "token-real";
+          s.style.background = `color-mix(in srgb, var(--real) ${Math.round(abs * 45)}%, transparent)`;
+        } else {
+          s.className = "token-fake";
+          s.style.background = `color-mix(in srgb, var(--fake) ${Math.round(abs * 45)}%, transparent)`;
+        }
       }
-    }
-    art.append(s);
-  });
-  box.append(art, el("p", "legend", "Solid underline indicates support for authenticity; dashed underline indicates signal toward fake."));
+      art.append(s);
+    });
+    box.append(art, el("p", "legend", "Solid underline indicates support for authenticity; dashed underline indicates signal toward fake."));
+  }
 
   // 3. Stance Evidence Panel
   box.append(renderEvidencePanel(d));
@@ -195,29 +244,32 @@ function render(d) {
   const m = el("div");
   m.append(el("h3", null, "Text Characteristics"));
   const ul = el("ul", "flags");
-  const flags = d.markers.flags && d.markers.flags.length ? d.markers.flags : ["Standard formatting and vocabulary"];
+  const flags = d.markers && d.markers.flags && d.markers.flags.length ? d.markers.flags : ["Standard formatting and vocabulary"];
   flags.forEach(f => ul.append(el("li", null, f)));
   m.append(ul);
 
   // Source Reputation
   const s = el("div");
   s.append(el("h3", null, "Source Domain"));
-  const src = d.source;
+  const src = d.source || {};
   s.append(el("p", null, !src.domain ? "No URL provided — source domain did not affect score."
     : src.score == null ? `${src.domain}: Unregistered in known source index.`
     : `${src.domain}: Verified reliability ${Math.round(src.score * 100)}/100.`));
   if (src.watchlist) {
     s.append(el("p", "err", `Watchlist alert: domain previously flagged ${src.flagged} times.`));
   }
-  s.append(el("p", "muted", `Active Model: ${d.model} (${d.latency_ms} ms latency)`));
+  s.append(el("p", "muted", `Active Model: ${d.model || "Linear SVM"} (${d.latency_ms || 0} ms latency)`));
 
   // Top Attributed Terms
-  const terms = el("div");
-  terms.append(el("h3", null, "Salient Linguistic Features"));
-  d.explanation.fake_terms.forEach(t => terms.append(el("span", "chip chip-fake", t)));
-  d.explanation.real_terms.forEach(t => terms.append(el("span", "chip chip-real", t)));
-
-  grid.append(m, s, terms);
+  if (d.explanation) {
+    const terms = el("div");
+    terms.append(el("h3", null, "Salient Linguistic Features"));
+    (d.explanation.fake_terms || []).forEach(t => terms.append(el("span", "chip chip-fake", t)));
+    (d.explanation.real_terms || []).forEach(t => terms.append(el("span", "chip chip-real", t)));
+    grid.append(m, s, terms);
+  } else {
+    grid.append(m, s);
+  }
   box.append(grid);
 
   // 5. Related Authentic Coverage & Fact Checks
@@ -231,7 +283,7 @@ function render(d) {
       const l = el("a", null, a.title);
       l.href = a.link;
       l.target = "_blank";
-      l.rel = "noopener";
+      l.rel = "noopener noreferrer";
       li.append(l, el("span", "muted", a.source ? ` — ${a.source}` : ""));
       rl.append(li);
     });
@@ -243,12 +295,12 @@ function render(d) {
   const fc = el("div");
   fc.append(el("h3", null, "Independent Fact-Checkers"));
   const fl = el("ul", "plain");
-  d.factchecks.forEach(f => {
+  (d.factchecks || []).forEach(f => {
     const li = el("li");
     const l = el("a", null, f.name);
     l.href = f.link;
     l.target = "_blank";
-    l.rel = "noopener";
+    l.rel = "noopener noreferrer";
     li.append(l);
     fl.append(li);
   });
@@ -292,111 +344,84 @@ async function loadHistory() {
     if (!rows.length) return;
     ul.replaceChildren(...rows.map(r => {
       const li = el("li");
-      const icon = r.verdict === "Likely real" ? "✔ " : (r.verdict === "Likely fake" ? "✖ " : "? ");
+      const isReal = r.verdict === "Likely real" || r.verdict === "SUPPORTED";
+      const isFake = r.verdict === "Likely fake" || r.verdict === "REFUTED";
+      const icon = isReal ? "✔ " : (isFake ? "✖ " : (r.verdict === "NOT_A_CLAIM" ? "ℹ " : "? "));
+      const cls = r.verdict.replace(/ /g, "-");
       li.append(
-        el("strong", r.verdict.replace(/ /g, "-"), `${icon}${r.verdict}`),
+        el("strong", cls, `${icon}${r.verdict}`),
         el("span", null, ` ${r.credibility}/100 — `),
         el("span", "muted", r.snippet)
       );
       return li;
     }));
-  } catch (err) {
-    console.warn("Failed to load history:", err);
-  }
-}
-
-async function loadStats() {
-  try {
-    const r = await fetch("/api/stats");
-    if (!r.ok) return;
-    const d = await r.json();
-    $("#meta").textContent = `Dataset: ${d.dataset} (${d.rows} rows + ${d.live_rows || 0} live; test set ${d.test_rows || "?"} rows, static only). Best model: ${d.best}.`;
-    const t = $("#stats"), head = el("tr");
-    ["Model", "Accuracy", "Precision", "Recall", "F1", "Confusion Matrix"].forEach(h => head.append(el("th", null, h)));
-    t.replaceChildren(head);
-    d.results.forEach(r => {
-      const tr = el("tr");
-      [r.model, r.accuracy, r.precision, r.recall, r.f1, JSON.stringify(r.confusion)].forEach(c => tr.append(el("td", null, c)));
-      t.append(tr);
-    });
-  } catch (err) {
-    console.warn("Failed to load model stats:", err);
-  }
-}
-
-// Resilient Exponential Backoff Polling
-async function pollRetrainStatus(maxAttempts = 15) {
-  let attempt = 0;
-  let delay = 1500;
-  const learnP = $("#learn");
-
-  while (attempt < maxAttempts) {
-    attempt++;
-    try {
-      const r = await fetch("/api/learn/status");
-      if (r.ok) {
-        const d = await r.json();
-        const msg = `Staged feedback: ${d.pending_feedback || 0} | Harvested RSS: ${d.rss_rows || 0} | Last trained: ${d.last}.` +
-          (d.running ? ` [Retraining in progress... attempt ${attempt}/${maxAttempts}]` : "") +
-          (d.error ? ` [Error: ${d.error}]` : "");
-        learnP.textContent = msg;
-
-        if (!d.running) {
-          loadStats();
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn("Polling error:", err);
-    }
-    await new Promise(resolve => setTimeout(resolve, delay));
-    delay = Math.min(8000, Math.round(delay * 1.4));
-  }
-  learnP.textContent = "Retraining job is still processing in background. Check back shortly.";
+  } catch (e) {}
 }
 
 async function loadLearn() {
   try {
     const r = await fetch("/api/learn/status");
     if (!r.ok) return;
-    const d = await r.json();
-    $("#learn").textContent = `Staged feedback: ${d.pending_feedback || 0} | Harvested RSS: ${d.rss_rows || 0} | Last trained: ${d.last}.` +
-      (d.running ? " [Retraining...]" : "");
-    if (d.running) {
-      pollRetrainStatus();
+    const s = await r.json();
+    const elP = $("#learn");
+    if (elP) {
+      elP.textContent = `Model status: ${s.model_best} | Total trained samples: ${s.total_samples} | Pending feedback: ${s.pending_feedback}`;
     }
-  } catch (err) {
-    console.warn("Failed to load learning status:", err);
-  }
+  } catch (e) {}
 }
 
-$("#retrain").onclick = async () => {
-  const adminKey = prompt("Enter Administrator API Key to trigger retraining:", "veritas-admin-secret-2026");
-  if (!adminKey) return;
-
-  const btn = $("#retrain");
-  btn.disabled = true;
+async function loadStats() {
   try {
-    const r = await fetch("/api/retrain", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Admin-Key": adminKey
-      },
-      body: JSON.stringify({ harvest: true })
-    });
-    const d = await r.json();
-    if (!r.ok) {
-      alert(d.error || "Retraining request failed");
-      return;
+    const r = await fetch("/api/stats");
+    if (!r.ok) return;
+    const data = await r.json();
+    const table = $("#stats");
+    const meta = $("#meta");
+    if (meta && data.dataset) {
+      meta.textContent = `Baseline model: ${data.best_model} on ${data.dataset.name} (${data.dataset.samples} samples)`;
     }
-    pollRetrainStatus();
-  } catch (e) {
-    alert("Error triggering retraining.");
-  } finally {
-    btn.disabled = false;
-  }
-};
+    if (table && data.models) {
+      table.innerHTML = "<tr><th>Model</th><th>Accuracy</th><th>F1</th><th>ROC-AUC</th><th>Train time</th></tr>";
+      for (const [mName, m] of Object.entries(data.models)) {
+        const tr = el("tr");
+        tr.append(
+          el("td", null, mName),
+          el("td", null, `${(m.accuracy * 100).toFixed(1)}%`),
+          el("td", null, `${(m.f1 * 100).toFixed(1)}%`),
+          el("td", null, `${(m.roc_auc * 100).toFixed(1)}%`),
+          el("td", null, `${m.train_time_sec}s`)
+        );
+        table.append(tr);
+      }
+    }
+  } catch (e) {}
+}
+
+const retrainBtn = $("#retrain");
+if (retrainBtn) {
+  retrainBtn.onclick = async () => {
+    const adminKey = prompt("Enter ADMIN_API_KEY to trigger retraining:");
+    if (!adminKey) return;
+    try {
+      const r = await fetch("/api/retrain", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Key": adminKey
+        },
+        body: JSON.stringify({ harvest: false })
+      });
+      const res = await r.json();
+      if (!r.ok) {
+        alert(res.error || "Retraining request failed");
+      } else {
+        alert("Retraining triggered successfully!");
+      }
+    } catch (e) {
+      alert("Error contacting retraining endpoint: " + e.message);
+    }
+  };
+}
 
 loadHistory();
 loadStats();

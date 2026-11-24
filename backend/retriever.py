@@ -16,6 +16,7 @@ Remediated architecture:
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -110,6 +111,15 @@ def resolve_canonical_domain(entry) -> str:
     return ""
 
 
+TEMPORAL_ORDINALS = {
+    "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th",
+    "11th", "12th", "13th", "14th", "15th", "16th", "17th", "18th", "19th", "20th",
+    "21st", "22nd", "23rd", "24th", "25th", "26th", "27th", "28th", "29th", "30th", "31st",
+    "2020", "2021", "2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030",
+    "today", "yesterday", "tomorrow", "noticed", "reported", "breaking"
+}
+
+
 def formulate_search_query(text: str) -> str:
     """Extract focused 3-to-5 keywords for Google News RSS retrieval."""
     # Strip common debunking/question prefixes that distract search
@@ -124,8 +134,8 @@ def formulate_search_query(text: str) -> str:
     
     # Priority 1: Capitalized or alphanumeric identifiers (Proper nouns, agencies)
     for w in words:
-        if (w[0].isupper() or any(c.isdigit() for c in w)) and w.lower() not in ENGLISH_STOP_WORDS:
-            low = w.lower()
+        low = w.lower()
+        if (w[0].isupper() or any(c.isdigit() for c in w)) and low not in ENGLISH_STOP_WORDS and low not in TEMPORAL_ORDINALS:
             if low not in seen and len(low) > 2:
                 seen.add(low)
                 salient.append(w)
@@ -136,7 +146,7 @@ def formulate_search_query(text: str) -> str:
     if len(salient) < 4:
         for w in words:
             low = w.lower()
-            if low not in seen and low not in ENGLISH_STOP_WORDS and len(low) > 3:
+            if low not in seen and low not in ENGLISH_STOP_WORDS and low not in TEMPORAL_ORDINALS and len(low) > 3:
                 seen.add(low)
                 salient.append(w)
                 if len(salient) >= 5:
@@ -150,7 +160,7 @@ def fetch(claim_text: str) -> list[dict]:
     """Return up to 8 trusted articles for the claim.
     
     Queries Google News RSS with persistent caching and canonical domain extraction.
-    Each item: {title: str, link: str, source_domain: str, reliability: float}
+    Each item: {title: str, link: str, source_domain: str, reliability: float, published_date: str}
     """
     query = formulate_search_query(claim_text)
     if not query.strip():
@@ -183,11 +193,18 @@ def fetch(claim_text: str) -> list[dict]:
             if reliability is None or reliability < 0.70:
                 continue
 
+            pub_date = "unknown"
+            if hasattr(e, "published_parsed") and e.published_parsed:
+                pub_date = time.strftime("%Y-%m-%d", e.published_parsed)
+            elif hasattr(e, "published") and e.published:
+                pub_date = str(e.published)[:10]
+
             results.append({
                 "title": title,
                 "link": link,
                 "source_domain": domain,
                 "reliability": reliability,
+                "published_date": pub_date
             })
 
         final_articles = results[:8]

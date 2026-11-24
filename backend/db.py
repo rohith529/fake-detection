@@ -4,8 +4,9 @@ All persistent runtime data is strictly centralized in data/history.db:
 1. history: Past credibility analyses, verdicts, and scores.
 2. flags: Unreliable domain frequency watchlist.
 3. rss_cache: Persistent Google News RSS responses with 24h TTL.
-4. feedback_staging: User feedback submitted from UI, awaiting verification.
-5. live_data: Stored feedback and harvested headlines for model retraining (replaces live.csv).
+4. verify_cache: Cached Gemini verification outputs with TTL (6h/24h).
+5. feedback_staging: User feedback submitted from UI, awaiting verification.
+6. live_data: Stored feedback and harvested headlines for model retraining.
 
 High-concurrency configuration:
 - PRAGMA journal_mode = WAL (Write-Ahead Logging)
@@ -39,7 +40,10 @@ def init_db():
                 snippet TEXT NOT NULL,
                 verdict TEXT NOT NULL,
                 credibility INTEGER NOT NULL,
-                domain TEXT
+                domain TEXT,
+                confidence TEXT,
+                claim TEXT,
+                reasoning TEXT
             );
 
             CREATE TABLE IF NOT EXISTS flags (
@@ -50,6 +54,17 @@ def init_db():
             CREATE TABLE IF NOT EXISTS rss_cache (
                 cache_key TEXT PRIMARY KEY,
                 articles_json TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS verify_cache (
+                cache_key TEXT PRIMARY KEY,
+                claim_text TEXT,
+                url_domain TEXT,
+                prompt_version TEXT,
+                date_str TEXT,
+                result_json TEXT NOT NULL,
                 created_at REAL NOT NULL,
                 expires_at REAL NOT NULL
             );
@@ -74,9 +89,22 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts);
             CREATE INDEX IF NOT EXISTS idx_history_domain ON history(domain);
             CREATE INDEX IF NOT EXISTS idx_cache_expires ON rss_cache(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_verify_cache_expires ON verify_cache(expires_at);
             CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback_staging(status);
             CREATE INDEX IF NOT EXISTS idx_live_origin ON live_data(origin);
         """)
+
+        # Migration: ensure history table has new columns if table already existed
+        cur = con.execute("PRAGMA table_info(history);")
+        existing_cols = {row[1] for row in cur.fetchall()}
+        for col_name in ("confidence", "claim", "reasoning"):
+            if col_name not in existing_cols:
+                con.execute(f"ALTER TABLE history ADD COLUMN {col_name} TEXT;")
+
+        # Startup cleanup: delete expired cache entries
+        now = time.time()
+        con.execute("DELETE FROM rss_cache WHERE expires_at < ?", (now,))
+        con.execute("DELETE FROM verify_cache WHERE expires_at < ?", (now,))
         con.commit()
 
         # Migrate legacy live.csv into live_data table if present
@@ -150,6 +178,61 @@ def cache_set(cache_key: str, articles: list[dict], ttl_seconds: int = 86400):
                    created_at = excluded.created_at,
                    expires_at = excluded.expires_at""",
             (cache_key, articles_json, now, expires_at)
+        )
+        con.commit()
+    except Exception:
+        pass
+    finally:
+        con.close()
+
+
+# ── Persistent Verify Cache Operations ───────────────────────────────────────
+
+def verify_cache_get(cache_key: str) -> Optional[dict]:
+    """Retrieve unexpired cached verification output."""
+    now = time.time()
+    con = get_db()
+    try:
+        row = con.execute(
+            "SELECT result_json FROM verify_cache WHERE cache_key = ? AND expires_at > ?",
+            (cache_key, now)
+        ).fetchone()
+        if row:
+            return json.loads(row["result_json"])
+        return None
+    except Exception:
+        return None
+    finally:
+        con.close()
+
+
+def verify_cache_set(
+    cache_key: str,
+    result_dict: dict,
+    ttl_seconds: int = 86400,
+    claim_text: str = "",
+    url_domain: str = "",
+    prompt_version: str = "",
+    date_str: str = ""
+):
+    """Store verification output in SQLite verify_cache with TTL."""
+    now = time.time()
+    expires_at = now + ttl_seconds
+    result_json = json.dumps(result_dict)
+    con = get_db()
+    try:
+        con.execute(
+            """INSERT INTO verify_cache (cache_key, claim_text, url_domain, prompt_version, date_str, result_json, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                   claim_text = excluded.claim_text,
+                   url_domain = excluded.url_domain,
+                   prompt_version = excluded.prompt_version,
+                   date_str = excluded.date_str,
+                   result_json = excluded.result_json,
+                   created_at = excluded.created_at,
+                   expires_at = excluded.expires_at""",
+            (cache_key, claim_text, url_domain, prompt_version, date_str, result_json, now, expires_at)
         )
         con.commit()
     except Exception:

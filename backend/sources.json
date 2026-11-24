@@ -1,4 +1,22 @@
-{"reuters.com":0.95,"apnews.com":0.95,"bbc.com":0.92,"bbc.co.uk":0.92,"pib.gov.in":0.95,
- "thehindu.com":0.9,"indianexpress.com":0.85,"hindustantimes.com":0.8,"ndtv.com":0.8,
- "timesofindia.indiatimes.com":0.75,"theonion.com":0.05,"infowars.com":0.05,
- "naturalnews.com":0.05,"worldnewsdailyreport.com":0.05,"beforeitsnews.com":0.05}
+{
+  "reuters.com": 0.95,
+  "apnews.com": 0.95,
+  "bbc.com": 0.92,
+  "bbc.co.uk": 0.92,
+  "pib.gov.in": 0.95,
+  "thehindu.com": 0.90,
+  "indianexpress.com": 0.85,
+  "hindustantimes.com": 0.80,
+  "ndtv.com": 0.80,
+  "timesofindia.indiatimes.com": 0.75,
+  "theonion.com": 0.05,
+  "babylonbee.com": 0.05,
+  "clickhole.com": 0.05,
+  "theborowitzreport.com": 0.05,
+  "newsthump.com": 0.05,
+  "fakingnews.com": 0.05,
+  "infowars.com": 0.05,
+  "naturalnews.com": 0.05,
+  "worldnewsdailyreport.com": 0.05,
+  "beforeitsnews.com": 0.05
+}

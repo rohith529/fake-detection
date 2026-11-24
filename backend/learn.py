@@ -25,6 +25,7 @@ import db
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = json.loads((Path(__file__).parent / "sources.json").read_text())
 MAX_RSS_ROWS = 3000
+ENABLE_LEARNING = os.environ.get("ENABLE_LEARNING", "false").lower() in ("true", "1", "yes")
 _lock = threading.Lock()
 state = dict(running=False, last="never", error=None)
 _log = logging.getLogger(__name__)
@@ -79,6 +80,9 @@ def approve_feedback(feedback_id: int) -> bool:
 
 def harvest(per_source: int = 15, min_score: float = 0.90) -> int:
     """Pull recent headlines from highly reliable domains into history.db live_data."""
+    if not ENABLE_LEARNING:
+        _log.info("Harvest skipped: ENABLE_LEARNING is false")
+        return 0
     import feedparser
     import requests
 
@@ -114,6 +118,9 @@ def harvest(per_source: int = 15, min_score: float = 0.90) -> int:
 
 def retrain():
     """Retrain model on static datasets + live_data from history.db."""
+    if not ENABLE_LEARNING:
+        state.update(running=False, error="Learning disabled by configuration (ENABLE_LEARNING=false)")
+        return False
     import train
     state.update(running=True, error=None)
     try:

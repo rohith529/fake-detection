@@ -11,18 +11,19 @@
 <body>
 <header>
   <h1>Veritas Desk</h1>
-  <p>Paste a headline or article. We score how credible it looks and show which words drove the score.</p>
+  <p>Paste a headline or article. We score credibility, verify factual claims, and show the words and evidence driving the score.</p>
 </header>
 <main>
   <form id="form">
     <label for="text">Headline or article text</label>
-    <textarea id="text" rows="7" required placeholder="e.g. Scientists confirm hot water cures all cancers, doctors hate this!"></textarea>
-    <label for="url">Source link <span class="opt">(optional, improves the score)</span></label>
-    <input id="url" type="text" placeholder="https://www.thehindu.com/...">
+    <textarea id="text" rows="6" required placeholder="e.g. Scientists confirm hot water cures all cancers, doctors hate this secret!"></textarea>
+    <label for="url">Source link <span class="opt">(optional, corroborates the score)</span></label>
+    <input id="url" type="text" placeholder="https://indianexpress.com/article/...">
     <div class="row">
       <button id="go" type="submit">Check credibility</button>
       <button type="button" class="ghost" id="ex1">Try a fake example</button>
       <button type="button" class="ghost" id="ex2">Try a real example</button>
+      <button type="button" class="ghost" id="ex3">Try a question (gate test)</button>
     </div>
   </form>
 
