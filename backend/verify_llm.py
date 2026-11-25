@@ -15,15 +15,18 @@ import re
 import urllib.parse
 from typing import Literal, Optional
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from pydantic import BaseModel, Field
 
 try:
     import db
 except ImportError:
     from backend import db
-
-load_dotenv()
 
 _log = logging.getLogger("veritas.verify")
 PROMPT_VERSION = "2026-11-21.v1"
